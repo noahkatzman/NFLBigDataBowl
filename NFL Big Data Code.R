@@ -405,17 +405,17 @@ auc_off  = evaluate_classification(xgb_model_off, dtest_off, y_test_off, "Offens
 auc_def  = evaluate_classification(xgb_model_def, dtest_def, y_test_def, "Defensive Success")
 auc_td   = evaluate_classification(xgb_model_td,  dtest_td,  y_test_td,  "Touchdown Probability")
 rmse_yards = evaluate_regression(xgb_model_yards, dtest_yards, y_test_yards, "Yards Gained")
+
 # 12. TEAM COLORS & SHINY APP:
-# This is a simple mapping of teams to their colors for visual consistency
 team_colors = list(
-  "BAL" = "#241773", "BUF" = "#00338D", "CIN" = "#FB4F14", "CLE" = "#311D00",
-  "DEN" = "#FB4F14", "HOU" = "#03202F", "IND" = "#002C5F", "JAX" = "#006778",
-  "KC"  = "#E31837", "LV"  = "#000000", "LAC" = "#0080C6", "MIA" = "#008E97",
-  "NE"  = "#002244", "NYJ" = "#125740", "PIT" = "#FFB612", "TEN" = "#4B92DB",
-  "ARI" = "#97233F", "ATL" = "#A71930", "CAR" = "#0085CA", "CHI" = "#C83803",
-  "DAL" = "#808080", "DET" = "#0076B6", "GB"  = "#203731", "LAR" = "#003594",
-  "MIN" = "#4F2683", "NO"  = "#D3BC8D", "NYG" = "#0B2265", "PHI" = "#004C54",
-  "SF"  = "#AA0000", "SEA" = "#002244", "TB"  = "#D50A0A", "WAS" = "#773141"
+  "BAL" = "#241773", "BUF" = "#C60C30", "CIN" = "#FB4F14", "CLE" = "#311D00",
+  "DEN" = "#FF5F00", "HOU" = "#113355", "IND" = "#002C5F", "JAX" = "#007778",
+  "KC"  = "#E31837", "LV"  = "#1A1A1A", "LAC" = "#0080C6", "MIA" = "#00A3A9",
+  "NE"  = "#1B2B5F", "NYJ" = "#125740", "PIT" = "#FFB612", "TEN" = "#4B92DB",
+  "ARI" = "#97233F", "ATL" = "#B51A40", "CAR" = "#0094DA", "CHI" = "#D14B04",
+  "DAL" = "#909090", "DET" = "#0076B6", "GB"  = "#234C2E", "LA" = "#003594",
+  "MIN" = "#6A2CB3", "NO"  = "#D3BC8D", "NYG" = "#0B2265", "PHI" = "#005D64",
+  "SF"  = "#AA0000", "SEA" = "#39FF14", "TB"  = "#E50C0C", "WAS" = "#88404A"
 )
 
 ui = fluidPage(
@@ -456,7 +456,7 @@ ui = fluidPage(
         
         tabPanel("Touchdown Probability",
                  h3("Touchdown Probability for Selected Play"),
-                 plotlyOutput("touchdownProbabilityPlot")),
+                 plotlyOutput("touchdownProbabilityPlot"))
       )
     )
   )
@@ -466,16 +466,25 @@ server = function(input, output, session) {
   
   # Dynamically update gameId and playId selections based on the chosen team.
   observe({
-    updateSelectInput(session, "gameId",
-                      choices = unique(full_data |>
-                                         filter(possessionTeam == input$team | defensiveTeam == input$team) |>
-                                         pull(gameId)))
+    updateSelectInput(
+      session, "gameId",
+      choices = unique(
+        full_data |>
+          filter(possessionTeam == input$team | defensiveTeam == input$team) |>
+          pull(gameId)
+      )
+    )
   })
+  
   observe({
-    updateSelectInput(session, "playId",
-                      choices = unique(full_data |>
-                                         filter(gameId == input$gameId) |>
-                                         pull(playId)))
+    updateSelectInput(
+      session, "playId",
+      choices = unique(
+        full_data |>
+          filter(gameId == input$gameId) |>
+          pull(playId)
+      )
+    )
   })
   
   # Animation Tab:
@@ -487,6 +496,15 @@ server = function(input, output, session) {
     
     play_data = tracking_data |>
       filter(gameId == input$gameId, playId == input$playId)
+    
+    # Fix: ensure 'club' is character
+    if ("club" %in% names(play_data)) {
+      play_data$club = as.character(play_data$club)
+    }
+    
+    # Fix: filter out any clubs not in team_colors
+    play_data = play_data |>
+      filter(club %in% names(team_colors))
     
     play_info = full_data |>
       filter(gameId == input$gameId, playId == input$playId)
@@ -504,21 +522,20 @@ server = function(input, output, session) {
     coverage    = unique(play_info$pff_passCoverage)
     play_result = unique(play_info$playDescription)
     
-    p_anim = ggfootball(left_endzone="red", right_endzone="blue", field_alpha=0.7) +
+    p_anim = ggfootball(left_endzone = "red", right_endzone = "blue", field_alpha = 0.7) +
       geom_point(
         data = play_data,
         aes(x = x, y = y, fill = club),
-        size=8, shape=21, color="black"
+        size = 8, shape = 21, color = "black"
       ) +
       geom_text(
         data = play_data,
-        aes(x = x, y = y, label=jerseyNumber),
-        size=3, color="white", vjust=0.5
+        aes(x = x, y = y, label = jerseyNumber),
+        size = 3, color = "white", vjust = 0.5
       ) +
-      scale_fill_nfl(type="primary") +
+      scale_fill_manual(values = team_colors, na.value = "#000000") +
       labs(
-        title = paste("Home", home_score, "-", visitor_score, 
-                      "| Time:", time_left),
+        title = paste("Home", home_score, "-", visitor_score, "| Time:", time_left),
         subtitle = paste("Coverage:", coverage),
         caption = paste("Play Result:", play_result),
         x = "Yard Line",
@@ -526,19 +543,24 @@ server = function(input, output, session) {
       ) +
       theme_minimal() +
       theme(
-        legend.position="none",
-        plot.title=element_text(size=14, face="bold", hjust=0.5),
-        plot.subtitle=element_text(size=12, hjust=0.5),
-        plot.caption=element_text(size=10, hjust=0.5)
+        legend.position = "none",
+        plot.title      = element_text(size = 14, face = "bold", hjust = 0.5),
+        plot.subtitle   = element_text(size = 12, hjust = 0.5),
+        plot.caption    = element_text(size = 10, hjust = 0.5)
       ) +
       transition_time(frameId) +
       ease_aes("linear")
     
-    gif_file = tempfile(fileext=".gif")
-    animate(p_anim, nframes=100, fps=input$fps, renderer=gifski_renderer(gif_file))
+    gif_file = tempfile(fileext = ".gif")
+    animate(
+      p_anim,
+      nframes = 100,
+      fps = input$fps,
+      renderer = gifski_renderer(gif_file)
+    )
     
-    list(src = gif_file, contentType="image/gif", alt="Play Animation")
-  }, deleteFile=TRUE)
+    list(src = gif_file, contentType = "image/gif", alt = "Play Animation")
+  }, deleteFile = TRUE)
   
   # Play Description Tab: Show a small table describing the play.
   output$playDescription = renderTable({
@@ -547,40 +569,53 @@ server = function(input, output, session) {
       filter(gameId == input$gameId, playId == input$playId) |>
       select(gameId, playId, possessionTeam, defensiveTeam, playDescription)
   })
+  
   # Historical Data Tab - Offensive Success Plot
   output$offensiveSuccess = renderPlot({
     req(input$team)
     data = full_data |>
       filter(possessionTeam == input$team) |>
       group_by(pff_passCoverage) |>
-      summarize(success_rate = mean(as.numeric(as.character(offensive_success)), na.rm = TRUE) * 100,
-                n = n())
+      summarize(
+        success_rate = mean(as.numeric(as.character(offensive_success)), na.rm = TRUE) * 100,
+        n = n()
+      )
     
-    ggplot(data, aes(x = pff_passCoverage, y = success_rate, fill = input$team)) +
+    ggplot(data, aes(x = pff_passCoverage, y = success_rate)) +
       geom_bar(stat = "identity", fill = team_colors[[input$team]]) +
       geom_text(aes(label = n), vjust = -0.5) +
-      labs(title = paste("Offensive Success Against Coverages:", input$team),
-           x = "Coverage Type", y = "Success Rate (%)") +
+      labs(
+        title = paste("Offensive Success Against Coverages:", input$team),
+        x = "Coverage Type",
+        y = "Success Rate (%)"
+      ) +
       theme_minimal() +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
   })
+  
   # Historical Data Tab - Defensive Success Plot
   output$defensiveSuccess = renderPlot({
     req(input$team)
     data = full_data |>
       filter(defensiveTeam == input$team) |>
       group_by(pff_passCoverage) |>
-      summarize(success_rate = mean(as.numeric(as.character(defensive_success)), na.rm = TRUE) * 100,
-                n = n())
+      summarize(
+        success_rate = mean(as.numeric(as.character(defensive_success)), na.rm = TRUE) * 100,
+        n = n()
+      )
     
-    ggplot(data, aes(x = pff_passCoverage, y = success_rate, fill = input$team)) +
+    ggplot(data, aes(x = pff_passCoverage, y = success_rate)) +
       geom_bar(stat = "identity", fill = team_colors[[input$team]]) +
       geom_text(aes(label = n), vjust = -0.5) +
-      labs(title = paste("Defensive Usage and Success:", input$team),
-           x = "Coverage Type", y = "Success Rate (%)") +
+      labs(
+        title = paste("Defensive Usage and Success:", input$team),
+        x = "Coverage Type",
+        y = "Success Rate (%)"
+      ) +
       theme_minimal() +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
   })
+  
   # Historical Data Tab - Team-Wide Predictions
   output$teamPredictionSummary = renderTable({
     req(input$gameId)
